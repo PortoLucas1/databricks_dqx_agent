@@ -59,6 +59,8 @@ variables:
   sql_warehouse_id:
     description: "SQL Warehouse ID for app to execute queries"
     default: ""  # Overridden by CI/CD --var flag
+  service_principal_name:
+    description: "Service principal ID/name for app authentication"
 
 # Include modular configuration files
 include:

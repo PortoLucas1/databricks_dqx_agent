@@ -17,3 +17,9 @@ targets:
       validation_job_name: "DQ Rule Validation - Dev"
       # Use bundle's deployed path - notebooks are synced to workspace.root_path
       validation_notebook_path: "${workspace.root_path}/files/notebooks/validate_dq_rules"
+
+      # SQL Warehouse & Service Principal (set via .env locally or --var / secrets in CI)
+      # Copy .env.example to .env and set SQL_WAREHOUSE_ID, SERVICE_PRINCIPAL_NAME
+      # Then run: ./scripts/deploy-dev.sh  (or pass --var when calling databricks bundle)
+      sql_warehouse_id: ""      # override via env / --var
+      service_principal_name: ""  # override via env / --var

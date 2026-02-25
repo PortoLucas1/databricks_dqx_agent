@@ -22,6 +22,10 @@ inputs:
   sql-warehouse-id:
     description: "SQL Warehouse ID for app to execute queries"
     required: true
+  service-principal-name:
+    description: "Service principal name/ID for app permissions (dev target)"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -29,15 +33,17 @@ runs:
       shell: bash
       run: |
         set -euxo pipefail
-        databricks bundle validate -t "${{ inputs.env }}" \
-          --var "sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
+        VAR_ARGS="--var sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
+        [ -n "${{ inputs.service-principal-name }}" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        databricks bundle validate -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Deploy bundle (first pass - creates jobs and app)
       shell: bash
       run: |
         set -euxo pipefail
-        databricks bundle deploy -t "${{ inputs.env }}" \
-          --var "sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
+        VAR_ARGS="--var sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
+        [ -n "${{ inputs.service-principal-name }}" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        databricks bundle deploy -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Configure app.yaml with job IDs and secrets
       shell: bash
@@ -51,8 +57,9 @@ runs:
 
         # Get job IDs from deployed bundle
         echo "Getting job IDs from bundle summary..."
-        BUNDLE_SUMMARY=$(databricks bundle summary -t "${{ inputs.env }}" \
-          --var "sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE" --output json)
+        SUMMARY_VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
+        [ -n "${{ inputs.service-principal-name }}" ] && SUMMARY_VAR_ARGS="$SUMMARY_VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        BUNDLE_SUMMARY=$(databricks bundle summary -t "${{ inputs.env }}" $SUMMARY_VAR_ARGS --output json)
 
         GENERATION_JOB_ID=$(echo "$BUNDLE_SUMMARY" | jq -r '.resources.jobs.dq_rule_generation.id // empty')
         VALIDATION_JOB_ID=$(echo "$BUNDLE_SUMMARY" | jq -r '.resources.jobs.dq_rule_validation.id // empty')
@@ -115,18 +122,22 @@ runs:
       shell: bash
       env:
         SQL_WAREHOUSE_ID_VALUE: ${{ inputs.sql-warehouse-id }}
+        SERVICE_PRINCIPAL_VALUE: ${{ inputs.service-principal-name }}
       run: |
         set -euxo pipefail
-        databricks bundle deploy -t "${{ inputs.env }}" \
-          --var "sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
+        VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
+        [ -n "$SERVICE_PRINCIPAL_VALUE" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=$SERVICE_PRINCIPAL_VALUE"
+        databricks bundle deploy -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Run app (deploy and start)
       shell: bash
       env:
         SQL_WAREHOUSE_ID_VALUE: ${{ inputs.sql-warehouse-id }}
+        SERVICE_PRINCIPAL_VALUE: ${{ inputs.service-principal-name }}
       run: |
         set -euxo pipefail
+        VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
+        [ -n "$SERVICE_PRINCIPAL_VALUE" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=$SERVICE_PRINCIPAL_VALUE"
         echo "Starting app deployment via bundle run..."
-        databricks bundle run dqx_app -t "${{ inputs.env }}" \
-          --var "sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
+        databricks bundle run dqx_app -t "${{ inputs.env }}" $VAR_ARGS
         echo "App deployment initiated successfully"
