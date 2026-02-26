@@ -11,7 +11,7 @@ import json
 from typing import Optional, List, Dict, Any
 from flask import request, has_request_context
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.core import Config as SdkConfig
+from databricks.sdk.core import Config as SdkConfig, oauth_service_principal
 from databricks.sdk.service.jobs import RunLifeCycleState, RunResultState
 from databricks import sql
 
@@ -81,6 +81,10 @@ class DatabricksService:
         http_path = self._get_sql_http_path()
 
         if not host or not http_path:
+            if not host:
+                raise Exception(
+                    "DATABRICKS_HOST is not set. Add to your .env: DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com"
+                )
             raise Exception(f"SQL connection not configured: host={host}, http_path={http_path}")
 
         # Remove https:// prefix if present (connector expects just hostname)
@@ -91,37 +95,38 @@ class DatabricksService:
 
         user_token = self._get_user_token()
 
+        # Optional: skip SSL verification for local dev (e.g. corporate proxy with self-signed cert)
+        conn_kwargs = {"server_hostname": host, "http_path": http_path}
+        if Config.DATABRICKS_TLS_NO_VERIFY:
+            conn_kwargs["_tls_no_verify"] = True
+
         if user_token:
             # OBO (On-Behalf-Of) authentication using user's token
             print(f"[DEBUG] Creating SQL connection with OBO auth, host={host}")
-            return sql.connect(
-                server_hostname=host,
-                http_path=http_path,
-                access_token=user_token
-            )
+            return sql.connect(**conn_kwargs, access_token=user_token)
         elif Config.DATABRICKS_TOKEN:
-            # Fallback to configured token (local dev)
-            print(f"[DEBUG] Creating SQL connection with configured token, host={host}")
-            return sql.connect(
-                server_hostname=host,
-                http_path=http_path,
-                access_token=Config.DATABRICKS_TOKEN
+            # PAT (personal access token) for local dev
+            print(f"[DEBUG] Creating SQL connection with PAT, host={host}")
+            return sql.connect(**conn_kwargs, access_token=Config.DATABRICKS_TOKEN)
+        elif Config.DATABRICKS_HOST and Config.DATABRICKS_CLIENT_ID and Config.DATABRICKS_CLIENT_SECRET:
+            # OAuth Service Principal (M2M)
+            print(f"[DEBUG] Creating SQL connection with OAuth SP, host={host}")
+            oauth_config = SdkConfig(
+                host=Config.DATABRICKS_HOST if Config.DATABRICKS_HOST.startswith("http") else f"https://{Config.DATABRICKS_HOST}",
+                client_id=Config.DATABRICKS_CLIENT_ID,
+                client_secret=Config.DATABRICKS_CLIENT_SECRET,
             )
+            return sql.connect(**conn_kwargs, credentials_provider=lambda: oauth_service_principal(oauth_config))
         else:
-            # Use service principal credentials
+            # Fallback: SDK default (e.g. env DATABRICKS_HOST + profile)
             sdk_config = self._get_sdk_config()
             if sdk_config:
-                print(f"[DEBUG] Creating SQL connection with SP credentials, host={host}")
-                return sql.connect(
-                    server_hostname=host,
-                    http_path=http_path,
-                    credentials_provider=lambda: sdk_config.authenticate
-                )
-            else:
-                raise Exception(
-                    "No authentication method available "
-                    "(no user token, no configured token, no SP credentials)"
-                )
+                print(f"[DEBUG] Creating SQL connection with SDK config, host={host}")
+                return sql.connect(**conn_kwargs, credentials_provider=lambda: sdk_config.authenticate)
+            raise Exception(
+                "No authentication method available. Set DATABRICKS_HOST and either "
+                "DATABRICKS_TOKEN (PAT) or DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET (OAuth SP)."
+            )
 
     def _get_client(self, use_user_token: bool = True) -> WorkspaceClient:
         """Get WorkspaceClient with user's token or default auth.
@@ -143,6 +148,14 @@ class DatabricksService:
                 host=Config.DATABRICKS_HOST,
                 token=Config.DATABRICKS_TOKEN,
                 auth_type="pat"
+            )
+        elif Config.DATABRICKS_HOST and Config.DATABRICKS_CLIENT_ID and Config.DATABRICKS_CLIENT_SECRET:
+            # Use native OAuth so the SDK handles token refresh (avoids "Invalid Token" on Jobs API).
+            host = Config.DATABRICKS_HOST if Config.DATABRICKS_HOST.startswith("http") else f"https://{Config.DATABRICKS_HOST}"
+            return WorkspaceClient(
+                host=host,
+                client_id=Config.DATABRICKS_CLIENT_ID,
+                client_secret=Config.DATABRICKS_CLIENT_SECRET,
             )
         else:
             return WorkspaceClient()
@@ -192,13 +205,9 @@ class DatabricksService:
 
     def get_catalogs(self) -> List[str]:
         """Get list of available catalogs (uses user's permissions)."""
-        try:
-            catalogs = self.execute_sql("SHOW CATALOGS")
-            print(f"[DEBUG] Found catalogs: {catalogs}")
-            return catalogs if catalogs else ["main"]
-        except Exception as e:
-            print(f"Error listing catalogs: {e}")
-            return ["main"]
+        catalogs = self.execute_sql("SHOW CATALOGS")
+        print(f"[DEBUG] Found catalogs: {catalogs}")
+        return catalogs if catalogs else ["main"]
 
     def get_schemas(self, catalog: str) -> List[str]:
         """Get list of schemas in a catalog (uses user's permissions)."""

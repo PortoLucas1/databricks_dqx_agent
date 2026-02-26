@@ -20,6 +20,9 @@ VAR_ARGS=(
   --var "sql_warehouse_id=$SQL_WAREHOUSE_ID"
   --var "service_principal_name=$SERVICE_PRINCIPAL_NAME"
 )
+if [ -n "${LAKEBASE_INSTANCE_NAME:-}" ]; then
+  VAR_ARGS+=(--var "lakebase_instance_name=$LAKEBASE_INSTANCE_NAME" --var "lakebase_database=${LAKEBASE_DATABASE:-databricks_postgres}")
+fi
 
 echo "Validating bundle for target dev..."
 databricks bundle validate -t dev "${VAR_ARGS[@]}"

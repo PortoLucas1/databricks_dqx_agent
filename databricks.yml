@@ -61,6 +61,12 @@ variables:
     default: ""  # Overridden by CI/CD --var flag
   service_principal_name:
     description: "Service principal ID/name for app authentication"
+  lakebase_instance_name:
+    description: "Lakebase database instance name (UI: first dropdown, e.g. dqxpostgres). Empty = skip Database resource."
+    default: ""
+  lakebase_database:
+    description: "Lakebase database name within the instance (UI: second dropdown, e.g. databricks_postgres)"
+    default: "databricks_postgres"
 
 # Include modular configuration files
 include:

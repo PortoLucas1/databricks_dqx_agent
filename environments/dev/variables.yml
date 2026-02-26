@@ -18,8 +18,10 @@ targets:
       # Use bundle's deployed path - notebooks are synced to workspace.root_path
       validation_notebook_path: "${workspace.root_path}/files/notebooks/validate_dq_rules"
 
-      # SQL Warehouse & Service Principal (set via .env locally or --var / secrets in CI)
-      # Copy .env.example to .env and set SQL_WAREHOUSE_ID, SERVICE_PRINCIPAL_NAME
-      # Then run: ./scripts/deploy-dev.sh  (or pass --var when calling databricks bundle)
-      sql_warehouse_id: ""      # override via env / --var
-      service_principal_name: ""  # override via env / --var
+      # Sensitive / env-specific: set via .env (local) or CI secrets (--var). Never commit real values here.
+      # Local: copy .env.example to .env, set SQL_WAREHOUSE_ID, SERVICE_PRINCIPAL_NAME, and optionally
+      # LAKEBASE_INSTANCE_NAME / LAKEBASE_DATABASE, then run ./scripts/deploy-dev.sh
+      sql_warehouse_id: ""           # from .env SQL_WAREHOUSE_ID or --var
+      service_principal_name: ""     # from .env SERVICE_PRINCIPAL_NAME or --var
+      lakebase_instance_name: ""     # from .env LAKEBASE_INSTANCE_NAME or --var (optional)
+      lakebase_database: ""          # from .env LAKEBASE_DATABASE or --var (optional)

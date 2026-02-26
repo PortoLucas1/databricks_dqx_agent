@@ -71,8 +71,8 @@ class TestDatabricksServiceCatalogOperations:
             assert catalogs == ["main", "samples", "hive_metastore"]
             mock_sql.assert_called_once_with("SHOW CATALOGS")
 
-    def test_get_catalogs_error_returns_main(self, app):
-        """Test get_catalogs returns ['main'] on error."""
+    def test_get_catalogs_error_raises(self, app):
+        """Test get_catalogs raises when execute_sql fails (caller returns 500)."""
         from app.services.databricks import DatabricksService
 
         service = DatabricksService()
@@ -81,9 +81,8 @@ class TestDatabricksServiceCatalogOperations:
             mock_sql.side_effect = Exception("Connection error")
 
             with app.test_request_context():
-                catalogs = service.get_catalogs()
-
-            assert catalogs == ["main"]
+                with pytest.raises(Exception, match="Connection error"):
+                    service.get_catalogs()
 
     def test_get_schemas_with_mock(self, app):
         """Test get_schemas with mocked SQL connection."""

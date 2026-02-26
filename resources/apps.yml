@@ -49,3 +49,12 @@ resources:
           job:
             id: ${resources.jobs.dq_rule_validation.id}
             permission: "CAN_MANAGE_RUN"
+        
+        # Database (Lakebase): use "database" resource with instance_name + database_name (Databricks Apps UI: Database = instance name + database name).
+        # Optional: set lakebase_instance_name and lakebase_database in variables.yml or --var.
+        - name: "dqx-lakebase"
+          description: "Lakebase for storing DQ rules"
+          database:
+            instance_name: ${var.lakebase_instance_name}
+            database_name: ${var.lakebase_database}
+            permission: "CAN_CONNECT_AND_CREATE"

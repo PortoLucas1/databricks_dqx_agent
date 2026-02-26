@@ -1,7 +1,10 @@
 # Databricks App Configuration
 # ============================
-# This file configures the app runtime settings
-# Environment-specific values (job IDs, Lakebase, etc.) are injected during CI/CD deployment
+# This file configures the app runtime settings. Required resources use valueFrom
+# so DAB injects them at runtime (no hardcoding). Resource keys match resources/apps.yml.
+#
+# Bundle variables (sql_warehouse_id, lakebase_host, lakebase_database, etc.) are set
+# per-environment in environments/<env>/variables.yml or via --var / CI secrets.
 
 command:
   - gunicorn
@@ -13,4 +16,20 @@ command:
   - "300"
   - wsgi:app
 
-env: []
+env:
+  # Required: SQL warehouse (valueFrom = bound resource from resources/apps.yml).
+  - name: SQL_WAREHOUSE_ID
+    valueFrom: dqx-sql-warehouse
+
+  # Required: Job IDs auto-set by DAB from bound job resources.
+  - name: DQ_GENERATION_JOB_ID
+    valueFrom: dqx-generation-job
+  - name: DQ_VALIDATION_JOB_ID
+    valueFrom: dqx-validation-job
+
+  # Optional: Step 4 (Save to Lakebase). Database resource injects PGHOST, PGPORT. Set database name explicitly
+  # (platform sometimes injects a truncated host as PGDATABASE, causing "database does not exist").
+  - name: PGHOST
+    valueFrom: dqx-lakebase
+  - name: LAKEBASE_DATABASE
+    value: "databricks_postgres"

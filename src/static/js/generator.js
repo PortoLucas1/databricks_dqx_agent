@@ -335,7 +335,7 @@ async function checkLakebaseStatus() {
             lakebaseConnected = false;
         } else {
             indicator.className = 'status-indicator disconnected';
-            statusText.textContent = 'Lakebase not configured. Set LAKEBASE_HOST in app.yaml';
+            statusText.textContent = 'Lakebase not configured. Set LAKEBASE_HOST or PGHOST (e.g. in .env or app.yaml and bind the dqx-lakebase resource)';
             lakebaseConnected = false;
         }
     } catch (e) {

@@ -51,7 +51,13 @@ async function loadCatalogs() {
 
     try {
         const response = await fetch('/api/catalogs');
-        const catalogs = await response.json();
+        const data = await response.json();
+        if (!response.ok) {
+            const msg = (data && data.error) ? data.error : 'Error loading catalogs';
+            select.innerHTML = '<option value="">' + escapeHtml(msg) + '</option>';
+            return;
+        }
+        const catalogs = Array.isArray(data) ? data : [];
         select.innerHTML = '<option value="">Select a catalog</option>' +
             catalogs.map(c => `<option value="${c}">${c}</option>`).join('');
     } catch (e) {

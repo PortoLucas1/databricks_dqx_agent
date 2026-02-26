@@ -1,5 +1,7 @@
 # DQX Data Quality Manager
 
+**Fork of [dediggibyte/databricks_dqx_agent](https://github.com/dediggibyte/databricks_dqx_agent).** All credit for this project goes to the original authors.
+
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Databricks](https://img.shields.io/badge/Databricks-Apps-FF3621.svg)](https://docs.databricks.com/dev-tools/databricks-apps/index.html)

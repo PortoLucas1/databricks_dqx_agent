@@ -22,6 +22,7 @@ def debug_info():
         "sql_http_path": f"/sql/1.0/warehouses/{warehouse_id}" if warehouse_id else None,
         "databricks_host": Config.DATABRICKS_HOST or os.getenv("DATABRICKS_HOST"),
         "has_databricks_token": bool(Config.DATABRICKS_TOKEN),
+        "has_oauth_sp": bool(Config.DATABRICKS_CLIENT_ID and Config.DATABRICKS_CLIENT_SECRET),
     })
 
 

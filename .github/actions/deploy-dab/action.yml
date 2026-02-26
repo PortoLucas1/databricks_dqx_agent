@@ -7,12 +7,12 @@ inputs:
   profile:
     description: "Databricks CLI profile to use"
     required: true
-  lakebase-host:
-    description: "Lakebase PostgreSQL host"
+  lakebase-instance-name:
+    description: "Lakebase database instance name (Apps UI first dropdown, e.g. dqxpostgres)"
     required: false
     default: ""
   lakebase-database:
-    description: "Lakebase database name"
+    description: "Lakebase database name (Apps UI second dropdown, e.g. databricks_postgres)"
     required: false
     default: ""
   model-serving-endpoint:
@@ -35,6 +35,7 @@ runs:
         set -euxo pipefail
         VAR_ARGS="--var sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
         [ -n "${{ inputs.service-principal-name }}" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        [ -n "${{ inputs.lakebase-instance-name }}" ] && VAR_ARGS="$VAR_ARGS --var lakebase_instance_name=${{ inputs.lakebase-instance-name }} --var lakebase_database=${{ inputs.lakebase-database }}"
         databricks bundle validate -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Deploy bundle (first pass - creates jobs and app)
@@ -43,13 +44,12 @@ runs:
         set -euxo pipefail
         VAR_ARGS="--var sql_warehouse_id=${{ inputs.sql-warehouse-id }}"
         [ -n "${{ inputs.service-principal-name }}" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        [ -n "${{ inputs.lakebase-instance-name }}" ] && VAR_ARGS="$VAR_ARGS --var lakebase_instance_name=${{ inputs.lakebase-instance-name }} --var lakebase_database=${{ inputs.lakebase-database }}"
         databricks bundle deploy -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Configure app.yaml with job IDs and secrets
       shell: bash
       env:
-        LAKEBASE_HOST_VALUE: ${{ inputs.lakebase-host }}
-        LAKEBASE_DATABASE_VALUE: ${{ inputs.lakebase-database }}
         MODEL_SERVING_ENDPOINT_VALUE: ${{ inputs.model-serving-endpoint }}
         SQL_WAREHOUSE_ID_VALUE: ${{ inputs.sql-warehouse-id }}
       run: |
@@ -59,6 +59,7 @@ runs:
         echo "Getting job IDs from bundle summary..."
         SUMMARY_VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
         [ -n "${{ inputs.service-principal-name }}" ] && SUMMARY_VAR_ARGS="$SUMMARY_VAR_ARGS --var service_principal_name=${{ inputs.service-principal-name }}"
+        [ -n "${{ inputs.lakebase-instance-name }}" ] && SUMMARY_VAR_ARGS="$SUMMARY_VAR_ARGS --var lakebase_instance_name=${{ inputs.lakebase-instance-name }} --var lakebase_database=${{ inputs.lakebase-database }}"
         BUNDLE_SUMMARY=$(databricks bundle summary -t "${{ inputs.env }}" $SUMMARY_VAR_ARGS --output json)
 
         GENERATION_JOB_ID=$(echo "$BUNDLE_SUMMARY" | jq -r '.resources.jobs.dq_rule_generation.id // empty')
@@ -92,15 +93,14 @@ runs:
           echo "    value: \"$VALIDATION_JOB_ID\"" >> src/app.yaml
         fi
 
-        # Add Lakebase config if provided
-        if [ -n "$LAKEBASE_HOST_VALUE" ]; then
-          echo "  - name: LAKEBASE_HOST" >> src/app.yaml
-          echo "    value: \"$LAKEBASE_HOST_VALUE\"" >> src/app.yaml
-        fi
-
-        if [ -n "$LAKEBASE_DATABASE_VALUE" ]; then
+        # Lakebase: PGHOST from bound resource; LAKEBASE_DATABASE set explicitly (platform often injects wrong PGDATABASE)
+        if [ -n "${{ inputs.lakebase-instance-name }}" ]; then
+          echo "  - name: PGHOST" >> src/app.yaml
+          echo "    valueFrom: dqx-lakebase" >> src/app.yaml
+          LAKEBASE_DB="${{ inputs.lakebase-database }}"
+          if [ -z "$LAKEBASE_DB" ]; then LAKEBASE_DB="databricks_postgres"; fi
           echo "  - name: LAKEBASE_DATABASE" >> src/app.yaml
-          echo "    value: \"$LAKEBASE_DATABASE_VALUE\"" >> src/app.yaml
+          echo "    value: \"$LAKEBASE_DB\"" >> src/app.yaml
         fi
 
         # Add Model Serving Endpoint
@@ -127,6 +127,7 @@ runs:
         set -euxo pipefail
         VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
         [ -n "$SERVICE_PRINCIPAL_VALUE" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=$SERVICE_PRINCIPAL_VALUE"
+        [ -n "${{ inputs.lakebase-instance-name }}" ] && VAR_ARGS="$VAR_ARGS --var lakebase_instance_name=${{ inputs.lakebase-instance-name }} --var lakebase_database=${{ inputs.lakebase-database }}"
         databricks bundle deploy -t "${{ inputs.env }}" $VAR_ARGS
 
     - name: Run app (deploy and start)
@@ -138,6 +139,7 @@ runs:
         set -euxo pipefail
         VAR_ARGS="--var sql_warehouse_id=$SQL_WAREHOUSE_ID_VALUE"
         [ -n "$SERVICE_PRINCIPAL_VALUE" ] && VAR_ARGS="$VAR_ARGS --var service_principal_name=$SERVICE_PRINCIPAL_VALUE"
+        [ -n "${{ inputs.lakebase-instance-name }}" ] && VAR_ARGS="$VAR_ARGS --var lakebase_instance_name=${{ inputs.lakebase-instance-name }} --var lakebase_database=${{ inputs.lakebase-database }}"
         echo "Starting app deployment via bundle run..."
         databricks bundle run dqx_app -t "${{ inputs.env }}" $VAR_ARGS
         echo "App deployment initiated successfully"

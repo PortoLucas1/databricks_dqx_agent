@@ -217,7 +217,7 @@ class LakebaseService:
             return {
                 "connected": False,
                 "configured": False,
-                "message": "Lakebase host not configured"
+                "message": "Set LAKEBASE_HOST or PGHOST (e.g. in .env for local dev, or bind the dqx-lakebase resource so PGHOST is injected)"
             }
 
         user_token = request.headers.get('x-forwarded-access-token')

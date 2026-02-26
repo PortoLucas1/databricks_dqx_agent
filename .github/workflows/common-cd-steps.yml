@@ -45,7 +45,7 @@ jobs:
         with:
           env: ${{ inputs.env }}
           profile: ${{ inputs.env }}
-          lakebase-host: ${{ secrets.LAKEBASE_HOST }}
+          lakebase-instance-name: ${{ secrets.LAKEBASE_INSTANCE_NAME }}
           lakebase-database: ${{ secrets.LAKEBASE_DATABASE }}
           model-serving-endpoint: ${{ secrets.MODEL_SERVING_ENDPOINT }}
           sql-warehouse-id: ${{ secrets.SQL_WAREHOUSE_ID }}
