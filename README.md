@@ -31,16 +31,19 @@ A Databricks App for generating, validating, and managing data quality rules usi
 # 1. Clone and configure
 git clone https://github.com/dediggibyte/databricks_dqx_agent.git
 cd databricks_dqx_agent
-export DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
 
-# 2. Deploy
-databricks bundle validate -t dev
-databricks bundle deploy -t dev
+# 2. Set configuration via .env (no secrets in repo)
+cp .env.example .env
+# Edit .env: set DATABRICKS_HOST, SQL_WAREHOUSE_ID, SERVICE_PRINCIPAL_NAME,
+# and optionally LAKEBASE_INSTANCE_NAME / LAKEBASE_DATABASE for Step 4 (Save to Lakebase).
+
+# 3. Deploy (script reads .env and passes vars to the bundle)
+./scripts/deploy-dev.sh
 ```
 
 Access: `https://your-workspace.cloud.databricks.com/apps/dqx-rule-generator-dev`
 
-> **Note:** DAB automatically deploys notebooks and configures permissions. No manual setup required.
+> **Note:** All sensitive and environment-specific values are read from `.env` (or CI secrets). Nothing is hardcoded in `variables.yml`. DAB automatically deploys notebooks and configures permissions.
 
 ---
 
@@ -54,7 +57,9 @@ Access: `https://your-workspace.cloud.databricks.com/apps/dqx-rule-generator-dev
 |-----------|-------------|-------------|
 | **Unity Catalog** | User Token (OBO) | Access data with user's permissions |
 | **Jobs** | App Service Principal | Trigger generation/validation jobs |
-| **Lakebase** | User OAuth | Store rules with user identity |
+| **Lakebase** | User OAuth | Store rules with user identity; app has **direct connection** via bound database resource |
+
+The Databricks App connects **directly** to Lakebase: when you bind a Lakebase database resource in DAB (`resources/apps.yml`), the platform injects `PGHOST` and `PGPORT` into the app at runtime. The app uses these with the user's OAuth token (no proxy or intermediate service).
 
 ---
 
@@ -62,6 +67,7 @@ Access: `https://your-workspace.cloud.databricks.com/apps/dqx-rule-generator-dev
 
 ```
 databricks_dqx_agent/
+├── .env.example              # Template for .env; copy to .env and set values (never commit .env)
 ├── src/                      # Flask app (deployed to Databricks Apps)
 │   ├── app/                  # Application code
 │   │   ├── routes/           # API endpoints
@@ -69,8 +75,9 @@ databricks_dqx_agent/
 │   ├── templates/            # HTML templates
 │   └── static/               # CSS and JavaScript
 ├── notebooks/                # Databricks notebooks (serverless jobs)
-├── resources/                # DAB resource definitions
-├── environments/             # Per-environment configs (dev, stage, prod)
+├── resources/                # DAB resource definitions (incl. bound Lakebase database)
+├── environments/             # Per-environment configs; variables from .env or CI --var
+├── scripts/                  # deploy-dev.sh sources .env and runs bundle deploy
 ├── docs/                     # Documentation (MkDocs)
 └── .github/                  # CI/CD workflows
 ```
@@ -79,38 +86,65 @@ databricks_dqx_agent/
 
 ## Configuration
 
-### Required Environment Variables
+All sensitive and environment-specific values are **loaded only from `.env`** (local) or from CI secrets passed as `--var` to the bundle. The repo does not commit secrets; `environments/*/variables.yml` holds empty placeholders filled at deploy time.
 
-Set in `src/app.yaml`:
+### Where values come from
+
+- **App runtime (Databricks):** Required IDs (SQL warehouse, job IDs, Lakebase) are injected by DAB via `valueFrom` in `src/app.yaml` from bound resources—no hardcoded IDs in the app.
+- **Bundle deploy (local):** `scripts/deploy-dev.sh` sources `.env` and passes `sql_warehouse_id`, `service_principal_name`, and optionally `lakebase_instance_name` / `lakebase_database` as `--var` to `databricks bundle deploy`.
+- **Local dev (Flask):** The app loads `.env` from the project root (e.g. when running `python wsgi.py` from `src/`), with `override=False` so Databricks-injected env vars are never overwritten when running inside the platform.
+
+### Required in `.env` (for deploy and/or local dev)
 
 | Variable | Description |
 |----------|-------------|
-| `SQL_WAREHOUSE_ID` | SQL Warehouse ID for queries |
-| `DQ_GENERATION_JOB_ID` | Auto-set by DAB |
-| `DQ_VALIDATION_JOB_ID` | Auto-set by DAB |
+| `SQL_WAREHOUSE_ID` | SQL Warehouse ID for Unity Catalog queries (e.g. `16e13f48f7427e3d`) |
+| `SERVICE_PRINCIPAL_NAME` | Service principal ID for app automation / deployment |
+| `DATABRICKS_HOST` | Workspace URL (e.g. `https://your-workspace.cloud.databricks.com`); required for local dev |
 
-### Optional
+Job IDs (`DQ_GENERATION_JOB_ID`, `DQ_VALIDATION_JOB_ID`) are **auto-set by DAB** from bound job resources; you do not set them in `.env` for the deployed app.
+
+### Optional in `.env`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LAKEBASE_HOST` | Lakebase PostgreSQL host | - |
+| `LAKEBASE_INSTANCE_NAME` | Lakebase instance (first dropdown in Apps UI) | - |
+| `LAKEBASE_DATABASE` | Lakebase database name (second dropdown) | `databricks_postgres` |
+| `LAKEBASE_HOST` | Only for local dev if not using bound resource | - |
 | `MODEL_SERVING_ENDPOINT` | AI model endpoint | `databricks-claude-sonnet-4-5` |
+| `DATABRICKS_TOKEN` | PAT for local dev; or use `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` | - |
+| `DATABRICKS_TLS_NO_VERIFY` | Set to `true` only for local dev (e.g. corporate proxy); never in production | - |
 
 ---
 
 ## Local Development
 
-```bash
-export DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
-export DATABRICKS_TOKEN="your-token"
-export DQ_GENERATION_JOB_ID="your-job-id"
-export DQ_VALIDATION_JOB_ID="your-job-id"
-export SQL_WAREHOUSE_ID="your-warehouse-id"
+Copy `.env.example` to `.env` and set at least:
 
+```bash
+# Required for catalog/schema/table listing and Jobs API
+DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
+# One of: PAT (DATABRICKS_TOKEN) or OAuth (DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET)
+DATABRICKS_TOKEN="your-token"
+
+# For deploy and for app (if testing with bundle)
+SQL_WAREHOUSE_ID="your-warehouse-id"
+SERVICE_PRINCIPAL_NAME="your-service-principal-id"
+
+# Optional: for Step 4 (Save to Lakebase)
+# LAKEBASE_INSTANCE_NAME=...
+# LAKEBASE_DATABASE=databricks_postgres
+```
+
+Then run the app:
+
+```bash
 cd src
 pip install -r requirements.txt
 python wsgi.py
 ```
+
+The app loads `.env` from the project root with `override=False`, so when running on Databricks the platform-injected variables (e.g. `PGHOST` for Lakebase) are preserved.
 
 ---
 
